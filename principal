@@ -1,0 +1,192 @@
+from flask import Flask, request, redirect, url_for, render_template, send_from_directory, jsonify
+from pyngrok import ngrok
+import os
+
+# Configurar el token de autenticación de ngrok
+ngrok.set_auth_token("2pRT0we3MvcP8dDl8e0D6yOyWqu_38pYk1cpp42XXoJAHVM1P")
+
+app = Flask(__name__)
+UPLOAD_FOLDER = "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+
+# Archivos de almacenamiento
+USUARIOS_FILE = "usuarios.txt"
+UBICACIONES_FILE = os.path.join(app.static_folder, "ubicaciones.txt")  # Actualizado a la ruta de static
+
+# Lista para almacenar las ubicaciones temporalmente
+ubicaciones = []
+
+# Funciones para manejar usuarios
+def cargar_usuarios():
+    usuarios = {}
+    try:
+        with open(USUARIOS_FILE, "r") as file:
+            for linea in file:
+                username, password = linea.strip().split(",")
+                usuarios[username] = password
+    except FileNotFoundError:
+        pass
+    return usuarios
+
+def guardar_usuario(username, password):
+    with open(USUARIOS_FILE, "a") as file:
+        file.write(f"{username},{password}\n")
+
+# Funciones para manejar ubicaciones
+def cargar_ubicaciones():
+    try:
+        with open(UBICACIONES_FILE, "r") as file:
+            for linea in file:
+                nombre, link, imagen = linea.strip().split("|")
+                ubicaciones.append({"nombre": nombre, "link": link, "imagen": imagen})
+    except FileNotFoundError:
+        pass
+
+def guardar_ubicacion(nombre, link, imagen):
+    with open(UBICACIONES_FILE, "a") as file:
+        file.write(f"{nombre}|{link}|{imagen}\n")
+
+# Cargar datos iniciales
+usuarios = cargar_usuarios()
+
+
+@app.route("/", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
+        if username  in usuarios and usuarios[username] == password:
+            return redirect(url_for("menu"))
+        else:
+            return render_template("login.html", error="Usuario o contraseña incorrectos")
+    return render_template("login.html")
+
+@app.route("/registrarse", methods=["GET", "POST"])
+def registrarse():
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
+        if username in usuarios:
+            return render_template("registro.html", error="El usuario ya existe")
+        else:
+            usuarios[username] = password
+            guardar_usuario(username, password)
+            return render_template("login.html", success="Registro exitoso")
+    return render_template("registro.html")
+
+@app.route("/menu")
+def menu():
+    return render_template("menu.html")
+
+@app.route("/compartir", methods=["GET", "POST"])
+def compartir():
+    if request.method == "POST":
+        nombre = request.form.get("nombre")
+        latitud = request.form.get("latitud")
+        longitud = request.form.get("longitud")
+        descripcion = request.form.get("descripcion")
+        imagen = request.files.get("imagen")
+
+        # Validar latitud y longitud
+        try:
+            latitud = float(latitud)
+            longitud = float(longitud)
+        except ValueError:
+            return "La latitud y longitud deben ser valores numéricos.", 400
+
+        # Guardar la imagen si existe
+        imagen_filename = None
+        if imagen:
+            imagen_filename = imagen.filename
+            imagen.save(os.path.join(app.config['UPLOAD_FOLDER'], imagen_filename))
+
+        # Guardar los datos en la lista de ubicaciones
+        ubicaciones.append({
+            "nombre": nombre,
+            "latitud": latitud,
+            "longitud": longitud,
+            "descripcion": descripcion,
+            "imagen": imagen_filename
+        })
+
+        # Guardar en el archivo
+        guardar_ubicacion(nombre, f"{latitud},{longitud}", imagen_filename)
+
+        return redirect(url_for("rutas"))
+
+    return render_template("compartir.html")
+
+@app.route("/uploads/<filename>")
+def uploaded_file(filename):
+    return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+
+@app.route("/explorar")
+def explorar():
+    return render_template("explorar.html", ubicaciones=ubicaciones)
+
+@app.route("/ver_ubicaciones")
+def ver_ubicaciones():
+    ubicaciones_lista = []
+    try:
+        with open(UBICACIONES_FILE, "r") as file:
+            for linea in file:
+                nombre, link, imagen = linea.strip().split("|")
+                ubicaciones_lista.append({
+                    "nombre": nombre,
+                    "imagen": url_for('uploaded_file', filename=imagen)
+                })
+    except FileNotFoundError:
+        pass
+
+    return render_template("ver_ubicaciones.html", ubicaciones=ubicaciones_lista)
+
+@app.route("/rutas", methods=["GET", "POST"])
+def rutas():
+    if request.method == "POST":
+        # Obtener las ubicaciones seleccionadas del formulario
+        seleccionadas = request.form.getlist("ubicaciones_seleccionadas")
+        seleccionadas_indices = [int(i) for i in seleccionadas]
+
+        # Extraer las ubicaciones seleccionadas
+        ubicaciones_seleccionadas = [
+            ubicaciones[i] for i in seleccionadas_indices
+        ]
+
+        # Renderizar la página con las ubicaciones seleccionadas
+        return render_template("rutas.html", ubicaciones=ubicaciones, seleccionadas=ubicaciones_seleccionadas)
+
+    # Si no hay POST, mostrar todas las ubicaciones
+    return render_template("rutas.html", ubicaciones=ubicaciones, seleccionadas=[])
+
+@app.route("/get_ubicaciones", methods=["GET"])
+def get_ubicaciones():
+    try:
+        ubicaciones_lista = []
+        with open(UBICACIONES_FILE, "r", encoding="utf-8") as file:
+            for linea in file:
+                # Suponiendo que el formato del archivo es nombre|latitud,longitud|imagen
+                nombre, coords, imagen = linea.strip().split("|")
+                lat, lon = map(float, coords.split(","))
+                ubicaciones_lista.append({
+                    "nombre": nombre,
+                    "latitud": lat,
+                    "longitud": lon,
+                    "imagen": imagen
+                })
+
+        # Devolver las ubicaciones como JSON
+        return jsonify(ubicaciones_lista), 200
+    except Exception as e:
+        return jsonify({"error": f"Error al cargar el archivo: {str(e)}"}), 500
+
+# Crear túnel ngrok para exponer el servidor
+try:
+    ngrok.kill()  # Detener túneles previos, si existen
+except:
+    pass
+public_url = ngrok.connect(5000)
+print(f"Servidor Flask está disponible públicamente en: {public_url}")
+
+# Ejecutar servidor Flask
+app.run(port=5000)

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Menú Principal</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .menu-container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            width: 350px;
+        }
+        h2 {
+            margin-bottom: 20px;
+            color: #333;
+            font-size: 24px;
+        }
+        .menu-container a {
+            display: block;
+            margin: 15px 0;
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: bold;
+            transition: background-color 0.3s ease;
+        }
+        .menu-container a:hover {
+            background-color: #45a049;
+        }
+        .menu-container a:last-child {
+            background-color: #f44336;
+        }
+        .menu-container a:last-child:hover {
+            background-color: #e53935;
+        }
+    </style>
+</head>
+<body>
+    <div class="menu-container">
+        <h2>Menú Principal</h2>
+        <a href="/compartir">Compartir Ubicaciones</a>
+        <a href="/explorar">Explorar el Mapa de Puno</a>
+        <a href="/ver_ubicaciones">Ver Ubicaciones</a>
+        <a href="/rutas">Armar una Ruta</a>
+        <a href="/">Cerrar Sesión</a>
+    </div>
+</body>
+</html>
